@@ -1,0 +1,261 @@
+1.	Go to Transaction CMOD and create Project ZSD_COMP
+2.	Assigned the enhancement IWO10011 & PPCO0023.
+3.	Create a Menu Exit available under enhancement IWO10011 with function code +MSF and provide the function Text and icon text
+4.	Global declaration done in include ZXCO1TOP
+5.	Write a logic in include program ZXCO1U23  ( EXIT_SAPLCOMK_014 ) to copy and paste the long text for every iteration and clear the global data in include program ZXWOCU08 ( EXIT_SAPLCOMK_003 ) 
+6.	Once the GV_NAME is updated then 1st selected text item will be copied by using the
+FM : READ_TEXT and hold the value on  internal table GT_LINE until last iteration. 
+7.	FM : CO_BC_RESBD_TAB_TO_ORDER_GET used to fetch the component details. 
+8.	FM : CO_BT_RESB_UPDATE used to update the long text indicator ( LTEXT) to enable the text editor which can be done by setting the language field (LTXSP). 
+9.	After the GV_NAME is updated it will go to else part for each iteration to update the remaining selected text.  Object name will get it from importing parameter from Exit EXIT_SAPLCOMK_014.Text is copied temporarily until save.
+10.	To disable the Repeat LT push button can use function exit EXIT_SAPLCOIH_006 add the new function code To table FCODE_EXC_CUST which will be disabled on when order status is technically complete. In table AUFK field PHAS0 or PHAS1 is marked X, then enable Repeat LT button. If not, just disable.
+
+
+*********************************
+
+Processing Logic	
+1.	Execute T-code IW32 and click on Components
+2.	Select multiple text at component level and click on Repeat LT.
+
+****************************************
+
+Project                        ZSD_COMP Copy Text Component Enhancement
+
+Enhancement     Impl      Exp  IWO10006 Maint. order: Fcode exclusion through cust. enhancement
+
+Function exit                  EXIT_SAPLCOIH_006
+
+
+
+Enhancement     Impl      Exp  IWO10011 Maint. order: Customer enhancement for component selection
+
+Function exit                  EXIT_SAPLCOMK_003
+
+Menu exit                      SAPLCOIH                       +MSF
+
+
+
+Enhancement     Impl      Exp  PPCO0023 Checks Changes to Order Components
+
+Function exit                  EXIT_SAPLCOMK_014
+
+
+***********************************
+
+
+Code in  EXIT_SAPLCOIH_006
+
+CONSTANTS: c_msf  TYPE fcode VALUE '+MSF',
+           c_wiar TYPE fcode VALUE 'WIAR'.
+
+IF sy-ucomm NE c_msf AND
+  fl_teco_cancel IS INITIAL.
+*C-- Execlude PushButton 'Repeat LT'.
+
+  CLEAR: fcode_exc_cust[].
+  IF caufvd_imp-aufnr IS NOT INITIAL.
+    SELECT SINGLE
+      aufnr,
+      phas0,
+      phas1
+      FROM aufk
+      INTO @DATA(ls_aufk)
+      WHERE aufnr EQ @caufvd_imp-aufnr.
+    IF sy-subrc EQ 0.
+      IF ls_aufk-phas0 IS INITIAL AND        "Created Status
+      ls_aufk-phas1 IS INITIAL .             "Release Status
+        APPEND c_msf TO fcode_exc_cust.
+      ENDIF.
+    ENDIF.
+    CLEAR ls_aufk.
+  ENDIF.
+
+*C-- Include PushButton 'Repeat LT'.
+
+  IF sy-ucomm EQ c_wiar. "When status cancelled.
+    DELETE fcode_exc_cust[] WHERE fcode EQ c_msf.
+    fl_teco_cancel = abap_true.
+  ENDIF.
+ENDIF.
+
+
+***********************************************************************
+
+
+code in EXIT_SAPLCOMK_003
+
+CONSTANTS: c_first_item TYPE char24 VALUE '(SAPLXCO1)FL_FIRST_ITEM',
+           c_msf        TYPE char16 VALUE '(SAPLXCO1)FL_MSF',
+           c_exit       TYPE char17 VALUE '(SAPLXCO1)FL_EXIT',
+           c_gt_line    TYPE char17 VALUE '(SAPLXCO1)GT_LINE'.
+
+FIELD-SYMBOLS: <fs_msf>   TYPE flag,
+               <fs_clear> TYPE any.
+
+ASSIGN (c_msf) TO <fs_msf>.
+
+*C-- Global variables/table will be cleared in last iteration.
+IF <fs_msf> IS ASSIGNED AND <fs_msf> IS NOT INITIAL.
+
+  ASSIGN (c_first_item) TO <fs_clear>.
+  IF <fs_clear> IS ASSIGNED.
+    CLEAR <fs_clear>.
+    UNASSIGN <fs_clear>.
+  ENDIF.
+
+  ASSIGN (c_exit) TO <fs_clear>.
+  IF <fs_clear> IS ASSIGNED.
+    CLEAR <fs_clear>.
+    UNASSIGN <fs_clear>.
+  ENDIF.
+
+  ASSIGN (c_gt_line) TO <fs_clear>.
+  IF <fs_clear> IS ASSIGNED.
+    CLEAR <fs_clear>.
+    UNASSIGN <fs_clear>.
+  ENDIF.
+
+  CLEAR <fs_msf>.
+  UNASSIGN <fs_msf>.
+ENDIF.
+
+****************************************************************
+
+Code in EXIT_SAPLCOMK_014.
+
+CONSTANTS: c_matk TYPE tdid VALUE 'MATK',
+           c_aufk TYPE tdobject VALUE 'AUFK',
+           c_msf  TYPE syst_ucomm VALUE '+MSF',
+           c_s    TYPE char1 VALUE 'S'.
+
+DATA: lv_name  TYPE tdobname,
+      lv_tabix TYPE syst_tabix,
+      ls_thead TYPE thead,
+      ls_resbd TYPE resbd,
+      lt_resb  TYPE STANDARD TABLE OF resbd.
+
+*C-- sy-ucomm changed when any line is edited
+IF sy-ucomm EQ c_msf AND fl_msf IS INITIAL.
+  fl_msf = abap_true.
+ENDIF.
+
+*C-- i_marked will be flagged only for selected Item apart from changed line.
+IF fl_msf IS NOT INITIAL AND i_marked IS NOT INITIAL
+  AND fl_exit IS INITIAL.
+
+  IF fl_first_item IS INITIAL.
+    CLEAR: gt_line, lv_name.
+    fl_first_item = abap_true.
+*C-- Read Text from the first Selected line.
+    lv_name = is_component-mandt
+              && is_component-rsnum
+              && is_component-rspos.
+
+    CALL FUNCTION 'READ_TEXT'
+      EXPORTING
+        id                      = c_matk
+        language                = sy-langu
+        name                    = lv_name
+        object                  = c_aufk
+      TABLES
+        lines                   = gt_line
+      EXCEPTIONS
+        id                      = 1
+        language                = 2
+        name                    = 3
+        not_found               = 4
+        object                  = 5
+        reference_check         = 6
+        wrong_access_to_archive = 7
+        OTHERS                  = 8.
+    IF sy-subrc NE 0.
+      MESSAGE i898(cz) WITH text-001 is_component-posnr. "Long Text not maintained for the Line Item
+      fl_exit = abap_true.
+    ELSE.
+
+      DATA(lt_line) = gt_line.
+      DELETE lt_line WHERE tdline IS INITIAL.
+      IF lt_line IS INITIAL.
+        MESSAGE i898(cz) WITH text-001 is_component-posnr. "Long Text not maintained for the Line Item
+        fl_exit = abap_true.
+      ENDIF.
+      CLEAR lt_line.
+    ENDIF.
+
+  ELSE.
+
+    IF gt_line IS NOT INITIAL.
+
+*C--Get Components Item Details.
+
+      CLEAR: lt_resb, ls_resbd.
+      IF is_header-aufnr IS NOT INITIAL.
+        CALL FUNCTION 'CO_BC_RESBD_TAB_TO_ORDER_GET'
+          EXPORTING
+            aufnr_imp = is_header-aufnr
+          TABLES
+            resbd_tab = lt_resb.
+
+*C-- Text editor will be enabled by setting Flag to text editor by language key.
+        IF lt_resb IS NOT INITIAL.
+          SORT lt_resb BY rsnum rspos.
+          READ TABLE lt_resb INTO DATA(ls_resb)
+          WITH KEY rsnum = is_component-rsnum
+                   rspos = is_component-rspos BINARY SEARCH.
+
+          IF sy-subrc EQ 0.
+            lv_tabix = sy-tabix.
+            IF ls_resb-ltxsp IS INITIAL.
+              ls_resb-ltxsp = sy-langu.
+            ENDIF.
+            ls_resbd      = ls_resb.
+            IF ls_resbd IS NOT INITIAL AND
+               lv_tabix IS NOT INITIAL.
+              CALL FUNCTION 'CO_BT_RESB_UPDATE'
+                EXPORTING
+                  resb_new  = ls_resbd
+                  tabix_old = lv_tabix.
+            ENDIF.
+          ENDIF.
+        ENDIF.
+      ENDIF.
+
+*C-- Text copied from the first selected item to the remaining selected item.
+
+      CLEAR : ls_thead.
+      ls_thead-tdobject = c_aufk.
+      ls_thead-tdid     = c_matk.
+      ls_thead-tdspras  = sy-langu.
+      ls_thead-tdname   = is_component-mandt &&
+                          is_component-rsnum &&
+                          is_component-rspos.
+
+      CALL FUNCTION 'SAVE_TEXT'
+        EXPORTING
+          header   = ls_thead
+        TABLES
+          lines    = gt_line
+        EXCEPTIONS
+          id       = 1
+          language = 2
+          name     = 3
+          object   = 4
+          OTHERS   = 5.
+      IF sy-subrc <> 0.
+        MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+                 WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+      ELSE.
+        MESSAGE text-002 TYPE c_s. "Repeat LT processed successfully.
+      ENDIF.
+      CLEAR : ls_thead, ls_resbd, lv_tabix, lt_resb.
+    ENDIF.
+  ENDIF.
+ENDIF.
+
+
+
+
+
+
+
+
