@@ -1,0 +1,2 @@
+
+    ASSIGN idoc_data[ segnam = c_e1maram ] TO FIELD-SYMBOL(<fs_idoc>).
