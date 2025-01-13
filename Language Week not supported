@@ -1,0 +1,16 @@
+When changing from Language to number format to supoort for all logon language since every language cannot be hardcoded. 
+
+
+2.	Replace the function module DATE_TO_DAY with DAY_IN_WEEK 
+3.	Pass Existing input P_DATE and get the output as Number. 
+4.	Replacing the EN hard coded value with the following
+From Sunday    to 7.
+From Monday   to 1.
+From Tuesday   to 2.
+From Wed.        to 3.
+From Thursday to 4.
+From Friday      to 5.
+From Sat.          to 6.
+
+ Note: Below screenshot only for reference purpose for Number and day 
+     output from FM: DAY_NAMES_GET.
