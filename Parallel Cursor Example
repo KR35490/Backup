@@ -1,0 +1,23 @@
+SORT: zemployee_basic, zemployee_salary. [Step 01]
+
+LOOP AT zemployee_basic INTO wa_employee_basic. [Step 02]
+
+READ TABLE zemployee_salary INTO wa_temp WITH KEY employee_id = wa_employee_basic-employee_id BINARY SEARCH. [Step 03]
+
+IF SY-SUBRC = 0. [Step 04]
+
+lv_index = SY-TABIX. (you need to declare this variable earlier only) [Step 05]
+
+LOOP AT zemployee_salary INTO wa_employee_salary FROM lv_index . [Step 06]
+
+IF wa_employee_basic-employee_id <> wa_employee_salary-employee_id. [Step 07]
+
+EXIT.
+
+ENDIF.
+
+Write: wa_employee_basic-employee_id, wa_employee_salary-month, wa_employee_salary-amount. [Step 08]
+
+ENDLOOP.
+
+ENDLOOP.
