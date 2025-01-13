@@ -1,0 +1,60 @@
+IF fp_post_date IS NOT INITIAL.
+
+    lv_post_year  = fp_post_date+0(4).
+    lv_post_month = fp_post_date+4(2).
+
+*C-- Get Fiscal Year Calender Period
+    DATA(lv_date) = VALUE #( gt_t009b[ bdatj = lv_post_year
+                                 poper = lv_post_month ]-butag OPTIONAL ).
+
+    IF lv_date IS NOT INITIAL.
+*C-- Posting Date
+      lv_post_date = fp_post_date.
+
+*C-- Get Week Days in Number to get supported for all logon language.
+      CALL FUNCTION 'DAY_IN_WEEK'
+        EXPORTING
+          datum = lv_post_date
+        IMPORTING
+          wotnr = lv_day.
+
+*C-- Change from Sunday to Monday
+      IF lv_day EQ 7.
+        lv_post_date = lv_post_date + 1.
+      ENDIF.
+
+*C-- Get Week Start Date and Week End Date.
+      CALL FUNCTION 'GET_WEEK_INFO_BASED_ON_DATE'
+        EXPORTING
+          date   = lv_post_date
+        IMPORTING
+          monday = fp_wkstdate
+          sunday = fp_wkeddate.
+
+*C--Adjust the Date to Sunday.
+      fp_wkstdate = fp_wkstdate - 1.
+
+*C--Adjust the Date to Saturday.
+      fp_wkeddate = fp_wkeddate - 1.
+
+      IF fp_wkstdate+0(4) LT fp_post_date+0(4).
+*C--Adjust Week Start Date for the Begining of the Year.
+        fp_wkstdate = lv_post_date.
+        fp_wkstdate+6(2) = 1.
+      ELSE.
+*C--Adjust Week End Date for the End of the Year
+        IF fp_post_date+4(2) EQ 12.
+          lv_wkstdate          = fp_wkstdate - 7.
+          lv_calender_day      = fp_post_date.
+          lv_calender_day+6(2) = lv_date.
+          DATA(lv_weekend)     = lv_calender_day - lv_wkstdate.
+          lv_weekend = lv_weekend - 6.
+*C-- Set Calender Day to any day
+          IF lv_weekend GE 1 AND lv_weekend LE 7. "(1=Su),(2=Mo),(3=Tu),(4=We),(5=Th),(6=Fr),(7=Sa)
+            fp_wkeddate = fp_post_date.
+            fp_wkeddate+6(2) = lv_date.
+          ENDIF.
+        ENDIF.
+      ENDIF.
+    ENDIF.
+  ENDIF.
