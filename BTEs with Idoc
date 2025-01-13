@@ -1,0 +1,66 @@
+
+
+1.	BUSINESS TRANSACTION EVENT (BTEs) will be used for the IDOC issue with Message type : ECMREV and inbound IDOC Function Module is IDOC_INPUT_ECMREV
+2.	Event CC000260 can be found in FM : IDOC_INPUT_ECMREV which can be used for implementing the Program exits.
+3.	Go to Transaction FIBF 
+4.	Go to the menu Environment and click Info system (P/S) then input event CC000260 and execute and select the BTEs 
+5.	Then copy the sample function module to a Z-function module (First create a new function group for the function module)
+6.	Go to the setting menu create a production of a customer give text and check box is to activate the product. 
+7.	Again Go to the setting menu create a P/S Module of a customer Assign the Event, Product and function Module which we created. 
+8.	Now IDOC will calling Z Function Module.  Edit and add FM : CONVERSION_EXIT_MATN1_INPUT to adjust the Material length issue which will be adding leading Zero.
+
+Product  : ZNP_REV
+Events   : CC000260
+FM 	 : ZNP_IDOC_ECMREV_IMPL
+FG	 : ZNP_ECMREV
+
+
+
+***********************************************************************************************************************************************
+
+
+1.	BUSINESS TRANSACTION EVENT (BTEs) will be used for the IDOC issue with Message type : ZMATMAS_C11 and inbound IDOC Function Module is IDOC_INPUT_MATMAS01
+2.	Event MGV00200 can be found in FM : IDOC_INPUT_MATMAS01 which can be used for implementing the Program exits.
+3.	Go to Transaction FIBF 
+4.	Go to the menu Environment and click Info system (P/S) then input event MGV00200 and execute and select the BTEs or click on pattern function Module. 
+5.	Then copy the sample function module to a Z-function module (First create a new function group for the function module)
+6.	Go to the setting menu create a production of a customer give text and check box is to activate the product. 
+7.	Again Go to the setting menu create a P/S Module of a customer Assign the Event, Product and function Module which we created. 
+8.	Now IDOC will calling Z Function Module.  Edit and add FM : CONVERSION_EXIT_MATN1_INPUT to adjust the Material length issue which will be adding leading Zero.
+
+Product  : ZNP_ZMAT
+Events   : MGV00200
+FM 	 : ZNP_IDOC_ZMATMAS_IMPL
+FG	 : ZNP_ ZMATMAS
+
+
+****************************************************************************************
+
+
+1.	BUSINESS TRANSACTION EVENT (BTEs) will be used for the IDOC issue with Message type : ECMMAS and inbound IDOC Function Module is IDOC_INPUT_ECMMAS
+2.	Event CC000170 can be found in FM : IDOC_INPUT_ECMMAS which can be used for implementing the Program exits.
+3.	Go to Transaction FIBF 
+4.	Go to the menu Environment and click Info system (P/S) then input event CC000170 and execute and select the BTEs or click on pattern function Module. 
+5.	Then copy the sample function module to a Z-function module (First create a new function group for the function module)
+6.	Go to the setting menu create a production of a customer give text and check box is to activate the product. 
+7.	Again Go to the setting menu create a P/S Module of a customer Assign the Event, Product and function Module which we created. 
+8.	Now IDOC will calling Z Function Module. Fetch the data from AEOI table using change number and update TAB_AEOI (IT_AEOI) 
+
+Product  : ZNP_MAS
+Events   : CC000170
+FM 	 : ZNPF_IDOC_ECMMAS_IMPL
+FG	 : ZNP_ ECMMAS
+
+
+*******************************************************************************************************************************************************************
+
+CC01   - Create Change Master in BRP system
+BD21   - Generate IDOC
+BD87   - Process IDOC  in BRP
+        CV01N - Create and Assign Document
+        CC02 -   Update Change number in BRP
+BD21   - Generate IDOC
+BD87   - Process IDOC  in BRP
+CC03   - Change Master should be updated in C11 system                with existing Document. 
+
+
