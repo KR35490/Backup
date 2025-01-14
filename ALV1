@@ -1,0 +1,675 @@
+*&---------------------------------------------------------------------*
+*& Report  YFIR_CORRESPONDENCE_DATA
+*&---------------------------------------------------------------------*
+*&*  Author                   :  Surbhi Shukla (H582690)               *
+*  Creation Date              :  21/11/2024                            *
+*  Description                :  CORRESPONDENCE_ARP900_DEV             *
+*  Includes                   :  YFIR_CORRESPONDENCE_DATA_TOP          *
+*                                YFIR_CORRESPONDENCE_DATA_SEL          *
+*                                YFIR_CORRESPONDENCE_DATA_CL01         *
+*  RFC #                      : 1000026571                             *
+*  Transport Number           : ARDK9A4YFT                             *
+*  CD/RFC                     : CD#3000066439                          *
+*  Referred from              : BA/IA-BRD  ZFIR_CORRESPONDENCE_DATA     *
+*----------------------------------------------------------------------*
+REPORT yfir_correspondence_data.
+
+*C-->Include for top data declarations
+INCLUDE yfiu_correspondence_data_top.
+*C-->Include for selection screen
+INCLUDE yfiu_correspondence_data_sel.
+*C-->Include for Methods
+INCLUDE yfiu_correspondence_data_cl01.
+
+INITIALIZATION.
+  IF go_lcl_alv_data  IS NOT BOUND.
+    CREATE OBJECT go_lcl_alv_data.
+  ENDIF.
+
+    IF go_detail_alv  IS NOT BOUND.
+    CREATE OBJECT go_detail_alv.
+  ENDIF.
+AT SELECTION-SCREEN.
+
+*C->validate the company code
+  IF go_lcl_alv_data IS BOUND.
+    CALL METHOD go_lcl_alv_data->validation.
+  ENDIF.
+
+AT SELECTION-SCREEN ON VALUE-REQUEST FOR s_ccode-low.
+  IF go_lcl_alv_data IS BOUND.
+    CALL METHOD go_lcl_alv_data->f4_help.
+  ENDIF.
+AT SELECTION-SCREEN ON VALUE-REQUEST FOR s_ccode-high.
+  IF go_lcl_alv_data IS BOUND.
+    CALL METHOD go_lcl_alv_data->f4_help.
+  ENDIF.
+
+START-OF-SELECTION.
+  IF go_lcl_alv_data IS BOUND.
+*C->Get Data
+    CALL METHOD go_lcl_alv_data->get_data.
+*C->Display alv
+    CALL METHOD go_lcl_alv_data->display_alv.
+  ENDIF.
+*C->Display detail alv
+  IF go_detail_alv IS BOUND.
+    CALL METHOD go_detail_alv->added_function.
+  ENDIF.
+
+
+
+************************************************************************************************************************************************************
+
+*&---------------------------------------------------------------------*
+*&  Include           YFIU_CORRESPONDENCE_DATA_TOP
+*&---------------------------------------------------------------------*
+*&---------------------------------------------------------------------*
+*&*  Author                   :  Surbhi Shukla (H582690)               *
+*  Creation Date              :  21/11/2024                            *
+*  Description                :  CORRESPONDENCE_ARP900_DEV             *
+*  Includes                   :  YFIR_CORRESPONDENCE_DATA_TOP          *
+*  RFC #                      :  1000026571                            *
+*  Transport Number           :  ARDK9A4YFT                            *
+*  CD/RFC                     :  CD#3000066439                         *
+*  Referred from             : BA/IA-BRD  ZFIR_CORRESPONDENCE_DATA     *
+*----------------------------------------------------------------------*
+TYPES : BEGIN OF ty_final_temp,
+          company_code TYPE bdm_comp_code,
+          strategy     TYPE /haca/crsid,
+          low          TYPE /haca/loval,
+          date         TYPE fico_char10,
+          plndtosend   TYPE rkechar20,
+          sent         TYPE fmfg_char5,
+        END OF ty_final_temp,
+
+        BEGIN OF ty_count,
+          comp_code TYPE bdm_comp_code,
+          partner   TYPE /hfw/object_key,
+          strategy  TYPE /haca/crsid,
+          crsid     TYPE /haca/crsid,
+          crpkg     TYPE /hfw/package_name,
+          brlid     TYPE /haca/brlid,
+          field     TYPE fieldname,
+          loval     TYPE /haca/loval,
+        END OF ty_count,
+
+        BEGIN OF ty_detail,
+          comp_code TYPE bdm_comp_code,
+          strategy  TYPE /haca/crsid,
+          partner   TYPE /hfw/object_key,
+          crpkg     TYPE /hfw/package_name,
+          loval     TYPE /haca/loval,
+          date      TYPE fico_char10,
+          status    TYPE string,
+        END OF ty_detail,
+
+        BEGIN OF ty_sent,
+          header_seq_i TYPE /hfw/seq_num,
+          sub_objname  TYPE /hfw/object_name,
+          parent_obj   TYPE swo_objid,
+          header_seq   TYPE /hfw/seq_num,
+          object_key   TYPE /hfw/object_key,
+          erdat        TYPE erdat,
+          package_name TYPE /hfw/package_name,
+        END OF ty_sent,
+
+        BEGIN OF ty_hist_i,
+          header_seq  TYPE /hfw/seq_num,
+          sub_objname TYPE /hfw/object_key,
+          parent_obj  TYPE swo_objid,
+        END OF ty_hist_i,
+
+        BEGIN OF ty_hist_h,
+          object_key   TYPE  /hfw/object_key,
+          package_name TYPE /hfw/package_name,
+          header_seq   TYPE /hfw/seq_num,
+          erdat        TYPE  erdat,
+        END OF ty_hist_h.
+DATA: go_columns    TYPE REF TO cl_salv_columns_table,
+      go_column     TYPE REF TO cl_salv_column,
+      go_functions  TYPE REF TO cl_salv_functions_list,
+      gs_layout     TYPE REF TO cl_salv_layout,
+      gs_layout_key TYPE salv_s_layout_key,
+      gs_notfound   TYPE REF TO cx_salv_not_found,
+      gv_error      TYPE string,
+      gv_ccode      TYPE bdm_comp_code,
+      gv_date       TYPE erdat,
+      go_events     TYPE REF TO cl_salv_events_table,
+      gt_final      TYPE TABLE OF ty_final_temp,
+      gt_detail     TYPE TABLE OF ty_detail.
+*/Constant Declaration
+CONSTANTS: c_field     TYPE jchar3     VALUE 'DAY',
+           c_comp_code TYPE lvc_fname  VALUE 'Company Code',
+           c_date      TYPE lvc_fname  VALUE 'Date',
+           c_plntosend TYPE lvc_fname  VALUE 'Planned to send',
+           c_sent      TYPE lvc_fname  VALUE 'Sent',
+           c_e         TYPE jb_char1   VALUE 'E',
+           c_s         TYPE jb_char1   VALUE 'S',
+           c_i         TYPE jb_char1   VALUE 'I',
+           c_option_bt TYPE p01p_char2 VALUE 'BT',
+           c_option_eq TYPE p01p_char2 VALUE 'EQ',
+           c_dot       TYPE jb_char1   VALUE '.',
+           c_not_sent  TYPE /plmb/char8 VALUE 'Not Sent',
+           c_detail    TYPE jb_char4    VALUE '&DET',
+           c_status    TYPE sypfkey     VALUE 'YSTATUS',
+           c_partner   TYPE lvc_fname   VALUE 'Partner',
+           c_status2   TYPE lvc_fname   VALUE 'Status',
+           c_12        TYPE p01p_char2  VALUE '12',
+           c_0         TYPE jb_char1    VALUE '0',
+           c_31        TYPE p01p_char2  VALUE '31',
+           c_01        TYPE p01p_char2  VALUE '01',
+           c_dats      TYPE jb_char4  VALUE 'DATS',
+           c_92        TYPE int4 VALUE 92.
+CLASS lcl_alv_data DEFINITION.
+  PUBLIC SECTION.
+    DATA: lt_final TYPE TABLE OF ty_final_temp.
+    METHODS : get_data,
+      validation,
+      f4_help,
+      display_alv,
+      header_change IMPORTING mi_text TYPE lvc_fname
+                              mi_col  TYPE lvc_fname.
+ENDCLASS.
+DATA go_lcl_alv_data TYPE REF TO lcl_alv_data.
+DATA go_table     TYPE REF TO cl_salv_table.
+CLASS lcl_event DEFINITION INHERITING FROM lcl_alv_data FINAL.
+  PUBLIC SECTION.
+    METHODS added_function FOR EVENT added_function OF cl_salv_events_table.
+ENDCLASS.                    "lcl_event DEFINITION
+DATA go_detail_alv TYPE REF TO lcl_event.
+
+*******************************************************************************************************************************88
+
+
+*&---------------------------------------------------------------------*
+*&  Include           YFIU_CORRESPONDENCE_DATA_SEL
+*&---------------------------------------------------------------------*
+*&*  Author                   :  Surbhi Shukla (H582690)          *
+*  Creation Date              :  21/11/2024                            *
+*  Description                :  CORRESPONDENCE_ARP900_DEV             *
+*  Includes                   :  YFIR_CORRESPONDENCE_DATA_SEL          *
+*  RFC #                      : 1000026571                             *
+*  Transport Number           : ARDK9A4YFT                             *
+*  CD/RFC                     : CD#3000066439                          *
+*  Referred from             : BA/IA-BRD  ZFIR_CORRESPONDENCE_DATA     *
+*----------------------------------------------------------------------*
+SELECTION-SCREEN BEGIN OF BLOCK b1 WITH FRAME TITLE text-001.
+SELECT-OPTIONS: s_ccode FOR gv_ccode OBLIGATORY,
+                s_date FOR gv_date.
+SELECTION-SCREEN END OF BLOCK b1.
+
+
+****************************************************************************************************************************************
+
+
+*&---------------------------------------------------------------------*
+*&  Include           YFIU_CORRESPONDENCE_DATA_CL01
+*&---------------------------------------------------------------------*
+*&---------------------------------------------------------------------*
+*&*  Author                   :  Surbhi Shukla (H582690)               *
+*  Creation Date              :  21/11/2024                            *
+*  Description                :  CORRESPONDENCE_ARP900_DEV             *
+*  Includes                   :  YFIU_CORRESPONDENCE_DATA_CL01         *
+*  RFC #                      : 1000026571                             *
+*  Transport Number           : ARDK9A4YFT                             *
+*  CD/RFC                     : CD#3000066439                          *
+*  Referred from             : BA/IA-BRD  ZFIR_CORRESPONDENCE_DATA     *
+*----------------------------------------------------------------------*
+CLASS lcl_alv_data IMPLEMENTATION.
+  METHOD get_data.
+    DATA: ls_final      TYPE ty_final_temp,
+          lv_day_low    TYPE p01p_char2,
+          lv_day_high   TYPE p01p_char2,
+          lt_low        TYPE STANDARD TABLE OF selopt,
+          lt_count_data TYPE STANDARD TABLE OF ty_count,
+          lv_date       TYPE fico_char10,
+          lv_date_1     TYPE n LENGTH 2,
+          lv_date_ext   TYPE fico_char10,
+          ls_detail     TYPE ty_detail,
+          lt_sent       TYPE  STANDARD TABLE OF ty_sent,
+          lt_hist_i     TYPE  STANDARD TABLE OF ty_hist_i,
+          lt_hist_h     TYPE  STANDARD TABLE OF ty_hist_h,
+          ls_sent       TYPE  ty_sent,
+          ls_hist_i     TYPE  ty_hist_i,
+          ls_hist_h     TYPE  ty_hist_h,
+          lt_package    TYPE  STANDARD TABLE OF selopt,
+          lt_temp       TYPE  STANDARD TABLE OF selopt.
+
+    FIELD-SYMBOLS <fs_final> LIKE ls_final.
+*C->Get the date range into an internal table
+*C-> to get the low and high value if the month changes
+    IF s_date-low IS NOT INITIAL AND s_date-high IS NOT INITIAL.
+      IF s_date-low+4(2) LE s_date-high+4(2).
+        lv_day_low = c_01.
+        lv_day_high = c_31.
+      ELSE .
+        lv_day_low = s_date-low+6(2).
+        lv_day_high = s_date-high+6(2).
+      ENDIF.
+    ELSEIF s_date-low IS NOT INITIAL AND s_date-high IS INITIAL.
+      lv_day_low = s_date-low+6(2).
+    ENDIF.
+
+    IF lv_day_low IS NOT INITIAL AND lv_day_high IS NOT INITIAL.
+      APPEND VALUE #( sign = c_i         option = c_option_bt
+                      low  = lv_day_low  high = lv_day_high ) TO lt_low.
+    ELSEIF lv_day_low IS NOT INITIAL AND lv_day_high IS INITIAL.
+      APPEND VALUE #( sign = c_i         option = c_option_eq
+                      low  = lv_day_low  ) TO lt_low.
+    ENDIF.
+*C->Fetch the record for the company code and date filled in the selection screen
+    IF s_ccode IS NOT INITIAL.
+      SELECT a~comp_code,
+             a~partner,
+             a~strategy,
+             b~crsid,
+             b~crpkg,
+             b~brlid,
+             b~field,
+             b~loval
+        FROM /haca/cs2bp AS a
+        LEFT OUTER JOIN /haca/csrip AS b
+        ON a~strategy = b~crsid
+        INTO TABLE @lt_count_data
+        WHERE a~comp_code IN @s_ccode[]
+        AND  b~field = @c_field                     " fetching the value for field DAY.
+       AND b~loval IN @lt_low.
+      IF sy-subrc = 0.
+        SORT lt_count_data BY comp_code partner strategy crpkg loval.
+        DELETE ADJACENT DUPLICATES FROM lt_count_data
+        COMPARING comp_code partner strategy crpkg loval.
+        DELETE lt_count_data WHERE partner EQ space.
+      ENDIF.
+    ENDIF.
+
+*C->Count the planned to send on the bais of partner for each company code and strategie
+    LOOP AT lt_count_data INTO DATA(ls_count_data).
+      ASSIGN lt_final[ company_code = ls_count_data-comp_code
+                       strategy = ls_count_data-strategy
+                       low = ls_count_data-loval ] TO <fs_final>.
+      IF <fs_final> IS ASSIGNED AND <fs_final>-company_code = ls_count_data-comp_code.
+        <fs_final>-strategy = ls_count_data-strategy.
+        <fs_final>-low = ls_count_data-loval.
+*C->If company code exists, increment count
+        <fs_final>-plndtosend = <fs_final>-plndtosend + 1.
+      ELSE.
+*C->If company code does not exist, create a new entry
+        lt_final = VALUE #( BASE lt_final ( company_code = ls_count_data-comp_code
+                               strategy = ls_count_data-strategy
+                               low = ls_count_data-loval
+                               date = ls_count_data-loval && c_dot && s_date-low+4(2) && c_dot && s_date-low+0(4)
+                               plndtosend = 1 ) ).
+      ENDIF.
+      IF <fs_final> IS ASSIGNED.
+        UNASSIGN <fs_final>.
+      ENDIF.
+      CLEAR ls_count_data.
+    ENDLOOP.
+    CLEAR: ls_final, lv_date , lv_date_1.
+    LOOP AT lt_final INTO ls_final.
+*C->Year is different in selection screen date range.
+      IF ls_final-date+6(4) LT s_date-high+0(4).
+        IF ls_final-date+3(2) LT c_12.
+          lv_date_1 = ls_final-date+3(2) + 1.
+          lv_date = ls_final-date+0(2) && c_dot && lv_date_1 && c_dot && ls_final-date+6(4).
+          APPEND VALUE #( company_code = ls_final-company_code strategy = ls_final-strategy
+                          low = ls_final-low date = lv_date
+                          plndtosend = ls_final-plndtosend ) TO lt_final.
+          CLEAR: ls_final, lv_date , lv_date_1.
+        ELSEIF ls_final-date+3(2) EQ c_12.
+          lv_date_1 = c_01.
+          DATA(lv_year) = ls_final-date+6(4) + 1.
+          lv_date = ls_final-date+0(2) && c_dot && lv_date_1 && c_dot && lv_year.
+          APPEND VALUE #( company_code = ls_final-company_code strategy = ls_final-strategy
+                            low = ls_final-low date = lv_date
+                            plndtosend = ls_final-plndtosend ) TO lt_final.
+          CLEAR: ls_final, lv_date , lv_date_1.
+        ENDIF.
+*C->When year is same in the selection screen date range
+      ELSE.
+        IF ls_final-date+3(2) LE s_date-high+4(2).
+          lv_date_1 = ls_final-date+3(2) + 1.
+          IF lv_date_1 LE s_date-high+4(2).
+            lv_date = ls_final-date+0(2) && c_dot && lv_date_1 && c_dot && ls_final-date+6(4).
+            APPEND VALUE #( company_code = ls_final-company_code strategy = ls_final-strategy
+                            low = ls_final-low date = lv_date
+                            plndtosend = ls_final-plndtosend ) TO lt_final.
+            CLEAR: ls_final, lv_date , lv_date_1.
+          ENDIF.
+        ENDIF.
+      ENDIF.
+    ENDLOOP.
+*C->Fetch the data to get the count of send packages
+    IF lt_count_data IS NOT INITIAL.
+*C-> Range table for package.
+      lt_package = VALUE #( FOR ls_temp IN lt_count_data
+                           ( sign = c_i
+                            option = c_option_eq
+                            low = ls_temp-crpkg ) ).
+      IF lt_package IS NOT INITIAL.
+        SORT lt_package BY low.
+        DELETE ADJACENT DUPLICATES FROM lt_package COMPARING low.
+      ENDIF.
+*C-> Range table for partner.
+      lt_temp = VALUE #( FOR ls_count IN lt_count_data
+                        ( sign = c_i
+                          option = c_option_eq
+                          low = ls_count-partner ) ).
+      IF lt_temp IS NOT INITIAL.
+        SORT lt_temp BY low.
+        DELETE ADJACENT DUPLICATES FROM lt_temp COMPARING low.
+
+        SELECT  object_key
+                 package_name
+                 header_seq
+                 erdat
+                 INTO TABLE lt_hist_h
+                 FROM /hfw/cor_hist_h
+                 WHERE object_key IN lt_temp
+                 AND erdat IN s_date[].
+        IF sy-subrc = 0.
+          DELETE lt_hist_h WHERE package_name NOT IN lt_package.
+          SORT lt_hist_h BY header_seq.
+          DELETE ADJACENT DUPLICATES FROM lt_hist_h COMPARING header_seq.
+        ENDIF.
+      ENDIF.
+      IF lt_hist_h IS NOT INITIAL.
+        SELECT header_seq
+               sub_objname
+               parent_obj
+               INTO TABLE lt_hist_i
+               FROM /hfw/cor_hist_i
+               FOR ALL ENTRIES IN lt_hist_h
+               WHERE header_seq = lt_hist_h-header_seq.
+        IF sy-subrc = 0.
+          CLEAR : ls_hist_i ,ls_hist_h, ls_sent.
+          LOOP AT lt_hist_i INTO ls_hist_i.
+            READ TABLE lt_hist_h INTO ls_hist_h WITH KEY header_seq = ls_hist_i-header_seq BINARY SEARCH.
+            IF sy-subrc  = 0.
+              ls_sent-header_seq_i   = ls_hist_i-header_seq.
+              ls_sent-sub_objname    = ls_hist_i-sub_objname.
+              ls_sent-parent_obj     = ls_hist_i-parent_obj.
+              ls_sent-header_seq     = ls_hist_h-header_seq.
+              ls_sent-object_key     = ls_hist_h-object_key.
+              ls_sent-erdat          = ls_hist_h-erdat.
+              ls_sent-package_name   = ls_hist_h-package_name.
+              APPEND ls_sent TO lt_sent.
+            ENDIF.
+            CLEAR : ls_hist_i ,ls_hist_h, ls_sent.
+          ENDLOOP.
+          SORT lt_sent BY header_seq.
+          DELETE ADJACENT DUPLICATES FROM lt_sent COMPARING header_seq.
+        ENDIF.
+      ENDIF.
+      CLEAR lt_temp.
+    ENDIF.
+    CLEAR ls_count_data.
+    LOOP AT lt_count_data INTO ls_count_data.
+      gt_detail = VALUE #( BASE gt_detail ( comp_code = ls_count_data-comp_code
+                           strategy = ls_count_data-strategy
+                           partner = ls_count_data-partner
+                           crpkg  = ls_count_data-crpkg
+                           loval = ls_count_data-loval
+                           date = ls_count_data-loval && c_dot && s_date-low+4(2) && c_dot && s_date-low+0(4) ) ).
+    ENDLOOP.
+    CLEAR : ls_detail, lv_date_1.
+    LOOP AT gt_detail INTO ls_detail.
+*C->Year is different in selection screen date range.
+      IF ls_detail-date+6(4) LT s_date-high+0(4).
+        IF ls_detail-date+3(2) LT c_12.
+          lv_date_1 = ls_detail-date+3(2) + 1.
+          lv_date = ls_detail-date+0(2) && c_dot && lv_date_1 && c_dot && ls_detail-date+6(4).
+          APPEND VALUE #( comp_code = ls_detail-comp_code strategy = ls_detail-strategy
+                          partner = ls_detail-partner     crpkg = ls_detail-crpkg
+                          loval = ls_detail-loval         date  = lv_date ) TO gt_detail.
+          CLEAR: ls_detail, lv_date , lv_date_1.
+        ELSEIF ls_detail-date+3(2) EQ c_12.
+          lv_date_1 = c_01.
+          lv_year = ls_detail-date+6(4) + 1.
+          lv_date = ls_detail-date+0(2) && c_dot && lv_date_1 && c_dot && lv_year.
+          APPEND VALUE #( comp_code = ls_detail-comp_code strategy = ls_detail-strategy
+                          partner = ls_detail-partner     crpkg = ls_detail-crpkg
+                          loval = ls_detail-loval         date  = lv_date ) TO gt_detail.
+          CLEAR: ls_detail, lv_date , lv_date_1.
+        ENDIF.
+*C->When year is same in the selection screen date range
+      ELSE.
+        IF ls_detail-date+3(2) LE s_date-high+4(2).
+          lv_date_1 = ls_detail-date+3(2) + 1.
+          IF lv_date_1 LE s_date-high+4(2).
+            lv_date = ls_detail-date+0(2) && c_dot && lv_date_1 && c_dot && ls_detail-date+6(4).
+            APPEND VALUE #( comp_code = ls_detail-comp_code strategy = ls_detail-strategy
+                            partner = ls_detail-partner     crpkg = ls_detail-crpkg
+                            loval = ls_detail-loval         date  = lv_date ) TO gt_detail.
+            CLEAR: ls_detail, lv_date , lv_date_1.
+          ENDIF.
+        ENDIF.
+      ENDIF.
+    ENDLOOP.
+**C->Count the sent packages
+    SORT gt_detail BY comp_code strategy partner crpkg date.
+    DELETE ADJACENT DUPLICATES FROM gt_detail COMPARING comp_code strategy partner crpkg date.
+*C->Count the sent packages
+    CLEAR ls_detail.
+    LOOP AT gt_detail INTO ls_detail.
+      DATA(lv_date_2) = ls_detail-date.
+      CALL FUNCTION 'CONVERT_DATE_TO_INTERN_FORMAT'
+        EXPORTING
+          datum = lv_date_2
+          dtype = c_dats
+        IMPORTING
+          idate = lv_date_2.
+      IF lv_date_2 IS NOT INITIAL.
+        ls_sent = VALUE #( lt_sent[ object_key = ls_detail-partner
+                                    package_name = ls_detail-crpkg
+                                    parent_obj+0(4) = ls_detail-comp_code
+                                    erdat = lv_date_2 ] OPTIONAL ).
+        lv_date_ext = ls_sent-erdat+6(2) && c_dot && ls_sent-erdat+4(2) && c_dot && ls_sent-erdat+0(4).
+        IF sy-subrc = 0.
+          IF ls_sent-erdat = lv_date_2 AND
+            ls_sent-object_key = ls_detail-partner AND
+            ls_sent-parent_obj+0(4) = ls_detail-comp_code.
+            ASSIGN lt_final[ company_code = ls_detail-comp_code
+                            date = lv_date_ext ] TO <fs_final>.
+            IF <fs_final> IS ASSIGNED AND <fs_final>-company_code = ls_detail-comp_code AND <fs_final>-date = ls_detail-date.
+              <fs_final>-sent = <fs_final>-sent + 1.
+              ls_detail-status = c_sent.
+              SHIFT ls_detail-partner LEFT DELETING LEADING c_0.
+              MODIFY gt_detail FROM ls_detail.
+            ENDIF.
+          ELSE.
+            ls_detail-status = c_not_sent.
+            SHIFT ls_detail-partner LEFT DELETING LEADING c_0.
+            MODIFY gt_detail FROM ls_detail.
+          ENDIF.
+        ENDIF.
+        CLEAR:  ls_sent, ls_count_data, lv_date_2 , ls_detail.
+      ENDIF.
+    ENDLOOP.
+    SORT lt_final BY company_code.
+    gt_final[] = lt_final[].
+    SORT gt_detail BY comp_code.
+  ENDMETHOD.
+  METHOD validation.
+*C->Validate the input company code from the table
+    IF s_ccode IS NOT INITIAL.
+      SELECT comp_code FROM /haca/cs2bp INTO TABLE @DATA(lt_cs2bp2)
+      WHERE comp_code IN @s_ccode.
+      IF sy-subrc <> 0.
+        MESSAGE text-011 TYPE c_e.
+      ENDIF.
+    ENDIF.
+    IF s_date-low IS INITIAL.
+      MESSAGE text-012 TYPE c_e.
+    ELSEIF s_date-high IS NOT INITIAL.
+      IF s_date-high - s_date-low  GT c_92.
+        MESSAGE text-016 TYPE c_e.
+      ENDIF.
+    ENDIF.
+  ENDMETHOD.
+ METHOD f4_help.
+    SELECT comp_code FROM /haca/cs2bp INTO TABLE @DATA(lt_cs2bp3).
+    IF sy-subrc = 0.
+      SORT lt_cs2bp3 BY comp_code.
+      DELETE ADJACENT DUPLICATES FROM lt_cs2bp3 COMPARING comp_code.
+      CALL FUNCTION 'F4IF_INT_TABLE_VALUE_REQUEST'
+        EXPORTING
+          RETFIELD               = 'COMP_CODE'
+         DYNPPROG               = sy-cprog
+         DYNPNR                 = sy-dynnr
+         DYNPROFIELD            = 'S_CCODE'
+         VALUE_ORG              = 'S'
+        TABLES
+          VALUE_TAB              = lt_cs2bp3
+       EXCEPTIONS
+         PARAMETER_ERROR        = 1
+         NO_VALUES_FOUND        = 2
+         OTHERS                 = 3.
+      IF SY-SUBRC <> 0.
+       REFRESH lt_cs2bp3.
+      ENDIF.
+    ENDIF.
+   ENDMETHOD.
+  METHOD display_alv.
+    DATA lo_obj TYPE REF TO  lcl_event.
+*C--> create a object for event.
+    IF lo_obj IS NOT BOUND.
+      CREATE OBJECT lo_obj.
+    ENDIF.
+*C->Generate ALV instance
+    TRY.
+        CALL METHOD cl_salv_table=>factory
+          IMPORTING
+            r_salv_table = go_table
+          CHANGING
+            t_table      = gt_final.
+*C->Get Column Object
+        CALL METHOD go_table->get_columns
+          RECEIVING
+            value = go_columns.
+        DATA(lo_selections) = go_table->get_selections( ).
+        lo_selections->set_selection_mode( value = if_salv_c_selection_mode=>row_column ).
+
+*C->Layout Settings
+        TRY.
+            gs_layout = go_table->get_layout( ).
+            gs_layout_key-report = sy-repid.
+            gs_layout->set_key( gs_layout_key ).
+            gs_layout->set_save_restriction( if_salv_c_layout=>restrict_none ).
+*C->Get and Set Toolbar
+            go_functions = go_table->get_functions( ).
+            go_functions->set_all( abap_true ).
+          CATCH cx_salv_not_found INTO gs_notfound.
+            gv_error = gs_notfound->get_text( ).
+            MESSAGE gv_error TYPE c_s  DISPLAY LIKE c_e.
+        ENDTRY.
+
+*C->Change headings of column
+        me->header_change( mi_text = text-003 mi_col = c_comp_code ).
+        me->header_change( mi_text = text-004 mi_col = c_date ).
+        me->header_change( mi_text = text-005 mi_col = c_plntosend ).
+        me->header_change( mi_text = text-006 mi_col = c_sent ).
+
+       TRY.
+           go_column ?= go_columns->get_column( text-007 ).
+           go_column->set_visible( abap_false ).
+         CATCH cx_salv_not_found INTO gs_notfound.
+            gv_error = gs_notfound->get_text( ).
+            MESSAGE gv_error TYPE c_s  DISPLAY LIKE c_e.
+        ENDTRY.
+*C->Optimize Column
+        CALL METHOD go_columns->set_optimize
+          EXPORTING
+            value = abap_false.
+*C->Add the detail button on the alv
+        go_table->set_screen_status(
+        EXPORTING
+          report        = sy-repid
+          pfstatus      = c_status
+          set_functions = cl_salv_table=>c_functions_all ).
+
+        go_events = go_table->get_event( ).
+        SET HANDLER lo_obj->added_function FOR go_events.
+*C->Call display method to display Alv
+        go_table->display( ).
+      CATCH cx_salv_msg .
+        MESSAGE text-002 TYPE c_s DISPLAY LIKE c_e.
+        LEAVE LIST-PROCESSING.
+    ENDTRY.
+  ENDMETHOD.
+  METHOD header_change.
+    DATA:lv_text_short  TYPE scrtext_s,
+         lv_text_medium TYPE scrtext_m,
+         lv_text_long   TYPE scrtext_l.
+*C->Change headings of column
+    TRY.
+        go_column ?= go_columns->get_column( mi_text ).
+        lv_text_short = lv_text_medium = lv_text_long = mi_col.
+        go_column->set_short_text( lv_text_short ).
+        go_column->set_medium_text( lv_text_medium ).
+        go_column->set_long_text( lv_text_long ).
+
+      CATCH cx_salv_not_found.
+        MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+                WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+        LEAVE LIST-PROCESSING.
+    ENDTRY.
+  ENDMETHOD.
+ENDCLASS.
+CLASS lcl_event IMPLEMENTATION.
+  METHOD added_function.
+    CASE sy-ucomm.
+      WHEN c_detail.
+*C->Generate ALV instance
+        TRY.
+            CALL METHOD cl_salv_table=>factory
+              IMPORTING
+                r_salv_table = go_table
+              CHANGING
+                t_table      = gt_detail.
+*C->Get Column Object
+            CALL METHOD go_table->get_columns
+              RECEIVING
+                value = go_columns.
+
+            DATA(lo_selections) = go_table->get_selections( ).
+            lo_selections->set_selection_mode( value = if_salv_c_selection_mode=>row_column ).
+*C->Layout Settings
+            TRY.
+                gs_layout = go_table->get_layout( ).
+                gs_layout_key-report = sy-repid.
+                gs_layout->set_key( gs_layout_key ).
+                gs_layout->set_save_restriction( if_salv_c_layout=>restrict_none ).
+
+              CATCH cx_salv_not_found INTO gs_notfound.
+                gv_error = gs_notfound->get_text( ).
+                MESSAGE gv_error TYPE c_s  DISPLAY LIKE c_e.
+            ENDTRY.
+*C->Change headings of column
+            me->header_change( mi_text = text-013 mi_col =  c_partner ).
+            me->header_change( mi_text = text-004 mi_col =  c_date ).
+            me->header_change( mi_text = text-014 mi_col =  c_status2 ).
+
+            TRY.
+            go_column ?= go_columns->get_column( text-015 ).
+            go_column->set_visible( abap_false ).
+            CATCH cx_salv_not_found INTO gs_notfound.
+                gv_error = gs_notfound->get_text( ).
+                MESSAGE gv_error TYPE c_s  DISPLAY LIKE c_e.
+            ENDTRY.
+*C->Optimize Column
+            CALL METHOD go_columns->set_optimize
+              EXPORTING
+                value = abap_true.
+*C->Get and Set Toolbar
+            go_functions = go_table->get_functions( ).
+            go_functions->set_all( abap_true ).          " Ensure all toolbar functions are available
+            go_table->display( ).
+          CATCH cx_salv_msg .
+            MESSAGE text-002 TYPE c_s DISPLAY LIKE c_e.
+            LEAVE LIST-PROCESSING.
+        ENDTRY.
+    ENDCASE.
+  ENDMETHOD.
+ENDCLASS.               "lcl_event_receiver
