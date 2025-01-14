@@ -1,0 +1,9 @@
+
+This is for existing changes.
+
+
+RF Device logic
+•	Go to program SE38 and input program : SIAC_REGENERATE_TEMPLATES and Execute.
+•	Input service name ZITS_ZCO11N_RF and Execute.                     ( Custom program can be anything ) 
+•	Select Mobile Devices from the drop down in Generating style.
+•	Select screen and Execute.
