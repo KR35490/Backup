@@ -1,0 +1,9 @@
+DATA: itab TYPE TABLE OF i WITH EMPTY KEY,
+      max  TYPE i.
+
+itab = VALUE #( ( 3 ) ( 7 ) ( 5 ) ( 9 ) ( 2 ) ).
+
+max = REDUCE i( INIT result = 0
+                FOR wa IN itab
+                NEXT result = COND #( WHEN wa > result THEN wa ELSE result ) ).
+WRITE: / max.  " Output: 9
